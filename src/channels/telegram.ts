@@ -111,11 +111,11 @@ function createTelegramChannel(opts: ChannelOpts): Channel | null {
       return true;
     }
 
-    if (command === '/antigrav') {
+    if (command === '/ag') {
       if (!args) {
         await bot!.sendMessage(
           chatId,
-          '📡 Usage: `/antigrav your message here`\n\nSends a message to Antigravity (the coding assistant).',
+          '📡 Usage: `/ag your message here`\n\nSends a message to Antigravity (the coding assistant).',
           { parse_mode: 'Markdown' },
         );
       } else {
@@ -162,7 +162,7 @@ function createTelegramChannel(opts: ChannelOpts): Channel | null {
         `🤖 **WizDudeBot Commands**\n\n` +
           `/model [name] — Switch AI model\n` +
           `/status — Show current config\n` +
-          `/antigrav [msg] — Send message to Antigravity\n` +
+          `/ag [msg] — Send message to Antigravity\n` +
           `/mikoclaw [msg] — Send direct message to AI agent\n` +
           `/help — This message\n\n` +
           `Just type normally to chat!`,
