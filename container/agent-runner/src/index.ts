@@ -91,10 +91,9 @@ function waitForIpcMessage(): Promise<string | null> {
 function buildSystemPrompt(input: ContainerInput): string {
   const name = input.assistantName || 'WizDudeBot';
   const parts = [
-    `You are ${name}, a helpful AI assistant on Telegram.`,
-    `IMPORTANT: Always respond in English unless the user explicitly writes in another language.`,
-    `You have a web_search tool available. ALWAYS use it when users ask about news, current events, scores, prices, or anything that requires up-to-date information. Do NOT say you can't access the web — use the web_search tool instead.`,
-    `Respond conversationally. Be concise but helpful. Use emoji naturally.`,
+    `You are ${name}, a concise AI assistant on Telegram.`,
+    `Rules: Reply in English. Keep responses SHORT (2-3 sentences max unless asked for detail). Use emoji sparingly.`,
+    `You have a web_search tool. Use it for news, current events, scores, prices, or anything needing live data. Never say you can't access the web.`,
   ];
   for (const p of ['/workspace/global/CLAUDE.md', '/workspace/group/CLAUDE.md']) {
     if (fs.existsSync(p)) parts.push('', fs.readFileSync(p, 'utf-8'));
@@ -147,9 +146,17 @@ async function runQuery(
   log(`Running query (${userMessage.length} chars) with model ${model}...`);
   history.push({ role: 'user', content: userMessage });
 
+  // Token optimization: truncate long history messages to 300 chars
+  const trimmedHistory = history.map(m => {
+    if (typeof m.content === 'string' && m.content.length > 300) {
+      return { ...m, content: m.content.slice(0, 300) + '...' };
+    }
+    return m;
+  });
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
-    ...history,
+    ...trimmedHistory,
   ];
 
   // First call — may return tool calls or direct response
@@ -157,7 +164,7 @@ async function runQuery(
     model,
     messages,
     tools: braveApiKey ? TOOLS : undefined,
-    max_tokens: 2048,
+    max_tokens: 1024,
   });
 
   let choice = response.choices?.[0];

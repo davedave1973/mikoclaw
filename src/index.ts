@@ -317,7 +317,7 @@ async function runAgent(
         isMain,
         assistantName: ASSISTANT_NAME,
         model: getGroupModel(chatJid),
-        history: getRecentHistory(chatJid, 20),
+        history: getRecentHistory(chatJid, 10),
         braveApiKey: readEnvFile(['BRAVE_API_KEY']).BRAVE_API_KEY,
       },
       (proc, containerName) =>

@@ -381,6 +381,6 @@ const server = createServer((req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`\n🖥️  MikoClaw Dashboard: http://localhost:${PORT}\n`);
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`\n🖥️  MikoClaw Dashboard: http://localhost:${PORT} (localhost only)\n`);
 });
