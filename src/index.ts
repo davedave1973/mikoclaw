@@ -356,7 +356,12 @@ async function startMessageLoop(): Promise<void> {
 
   // Comms watcher: pick up messages from Antigravity (data/comms/to-mikoclaw/)
   const commsInDir = path.join(process.cwd(), 'data', 'comms', 'to-mikoclaw');
-  const commsOutDir = path.join(process.cwd(), 'data', 'comms', 'from-mikoclaw');
+  const commsOutDir = path.join(
+    process.cwd(),
+    'data',
+    'comms',
+    'from-mikoclaw',
+  );
   fs.mkdirSync(commsInDir, { recursive: true });
   fs.mkdirSync(commsOutDir, { recursive: true });
 
@@ -452,7 +457,10 @@ async function startMessageLoop(): Promise<void> {
     // Process comms from Antigravity (file-based)
     try {
       const commsFiles = fs.existsSync(commsInDir)
-        ? fs.readdirSync(commsInDir).filter(f => f.endsWith('.json')).sort()
+        ? fs
+            .readdirSync(commsInDir)
+            .filter((f) => f.endsWith('.json'))
+            .sort()
         : [];
       for (const file of commsFiles) {
         const filePath = path.join(commsInDir, file);
@@ -474,11 +482,24 @@ async function startMessageLoop(): Promise<void> {
             is_from_me: false,
             is_bot_message: false,
           });
-          storeChatMetadata(targetJid, new Date().toISOString(), 'Antigravity', 'cli', false);
-          logger.info({ message: data.message }, 'Antigravity message injected');
-        } catch { /* skip bad files */ }
+          storeChatMetadata(
+            targetJid,
+            new Date().toISOString(),
+            'Antigravity',
+            'cli',
+            false,
+          );
+          logger.info(
+            { message: data.message },
+            'Antigravity message injected',
+          );
+        } catch {
+          /* skip bad files */
+        }
       }
-    } catch { /* ignore comms errors */ }
+    } catch {
+      /* ignore comms errors */
+    }
 
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
   }
