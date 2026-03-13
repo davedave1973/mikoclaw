@@ -240,10 +240,7 @@ function buildContainerArgs(
 
   // Pass OpenRouter API directly to the container (bypassing proxy for now)
   const secrets = readEnvFile(['OPENROUTER_API_KEY']);
-  args.push(
-    '-e',
-    'OPENAI_BASE_URL=https://openrouter.ai/api/v1',
-  );
+  args.push('-e', 'OPENAI_BASE_URL=https://openrouter.ai/api/v1');
   args.push('-e', `OPENAI_API_KEY=${secrets.OPENROUTER_API_KEY}`);
 
   // Runtime-specific args for host gateway resolution

@@ -39,11 +39,21 @@ function createTelegramChannel(opts: ChannelOpts): Channel | null {
         if (!msg.text) return;
         const chatId = msg.chat.id;
         const jid = chatIdToJid(chatId);
-        const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-        const senderName = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') || 'Unknown';
+        const isGroup =
+          msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+        const senderName =
+          [msg.from?.first_name, msg.from?.last_name]
+            .filter(Boolean)
+            .join(' ') || 'Unknown';
         const chatName = msg.chat.title || senderName;
 
-        opts.onChatMetadata(jid, new Date(msg.date * 1000).toISOString(), chatName, 'telegram', isGroup);
+        opts.onChatMetadata(
+          jid,
+          new Date(msg.date * 1000).toISOString(),
+          chatName,
+          'telegram',
+          isGroup,
+        );
 
         const message: NewMessage = {
           id: `tg-${msg.message_id}-${chatId}`,
@@ -76,16 +86,28 @@ function createTelegramChannel(opts: ChannelOpts): Channel | null {
       }
     },
 
-    isConnected(): boolean { return connected; },
-    ownsJid(jid: string): boolean { return jid.startsWith(JID_PREFIX); },
+    isConnected(): boolean {
+      return connected;
+    },
+    ownsJid(jid: string): boolean {
+      return jid.startsWith(JID_PREFIX);
+    },
 
     async disconnect(): Promise<void> {
-      if (bot) { await bot.stopPolling(); connected = false; logger.info('Telegram bot disconnected'); }
+      if (bot) {
+        await bot.stopPolling();
+        connected = false;
+        logger.info('Telegram bot disconnected');
+      }
     },
 
     async setTyping(jid: string, isTyping: boolean): Promise<void> {
       if (!bot || !isTyping) return;
-      try { await bot.sendChatAction(jidToChatId(jid), 'typing'); } catch { /* best-effort */ }
+      try {
+        await bot.sendChatAction(jidToChatId(jid), 'typing');
+      } catch {
+        /* best-effort */
+      }
     },
   };
   return channel;

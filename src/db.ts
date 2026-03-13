@@ -27,7 +27,9 @@ const ContainerConfigSchema = z.object({
   timeout: z.number().optional(),
 });
 
-function parseContainerConfig(raw: string | null): import('./types.js').ContainerConfig | undefined {
+function parseContainerConfig(
+  raw: string | null,
+): import('./types.js').ContainerConfig | undefined {
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw);

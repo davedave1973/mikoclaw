@@ -37,10 +37,7 @@ export function startCredentialProxy(
   port: number,
   host = '127.0.0.1',
 ): Promise<Server> {
-  const secrets = readEnvFile([
-    'OPENROUTER_API_KEY',
-    'OPENROUTER_BASE_URL',
-  ]);
+  const secrets = readEnvFile(['OPENROUTER_API_KEY', 'OPENROUTER_BASE_URL']);
 
   const authMode: AuthMode = 'api-key';
 
@@ -96,10 +93,7 @@ export function startCredentialProxy(
       });
       req.on('end', () => {
         if (bodySize > MAX_BODY_SIZE) {
-          logger.warn(
-            { bodySize },
-            'Credential proxy: request body too large',
-          );
+          logger.warn({ bodySize }, 'Credential proxy: request body too large');
           res.writeHead(413);
           res.end('Payload Too Large');
           return;

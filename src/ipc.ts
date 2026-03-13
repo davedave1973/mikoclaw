@@ -79,7 +79,11 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   { file, sourceGroup },
                   'Skipping non-regular IPC message file (possible symlink)',
                 );
-                try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+                try {
+                  fs.unlinkSync(filePath);
+                } catch {
+                  /* ignore */
+                }
                 continue;
               }
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -140,7 +144,11 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   { file, sourceGroup },
                   'Skipping non-regular IPC task file (possible symlink)',
                 );
-                try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+                try {
+                  fs.unlinkSync(filePath);
+                } catch {
+                  /* ignore */
+                }
                 continue;
               }
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
