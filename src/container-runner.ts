@@ -2,7 +2,7 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in containers and handles IPC
  */
-import { ChildProcess, exec, spawn } from 'child_process';
+import { ChildProcess, execFile, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -21,6 +21,7 @@ import { logger } from './logger.js';
 import {
   CONTAINER_HOST_GATEWAY,
   CONTAINER_RUNTIME_BIN,
+  containerSecurityArgs,
   hostGatewayArgs,
   readonlyMountArgs,
   stopContainer,
@@ -178,6 +179,8 @@ function buildVolumeMounts(
   // Copy agent-runner source into a per-group writable location so agents
   // can customize it (add tools, change behavior) without affecting other
   // groups. Recompiled on container startup via entrypoint.sh.
+  // Non-main groups get read-only access to prevent persistent backdoors
+  // via modified agent-runner code (MED-2).
   const agentRunnerSrc = path.join(
     projectRoot,
     'container',
@@ -196,7 +199,7 @@ function buildVolumeMounts(
   mounts.push({
     hostPath: groupAgentRunnerDir,
     containerPath: '/app/src',
-    readonly: false,
+    readonly: !isMain,
   });
 
   // Additional mounts validated against external allowlist (tamper-proof from containers)
@@ -207,6 +210,18 @@ function buildVolumeMounts(
       isMain,
     );
     mounts.push(...validatedMounts);
+
+    // Shadow .env files inside additional mounts to prevent secret leakage (MED-1)
+    for (const vm of validatedMounts) {
+      const envInMount = path.join(vm.hostPath, '.env');
+      if (fs.existsSync(envInMount)) {
+        mounts.push({
+          hostPath: '/dev/null',
+          containerPath: `${vm.containerPath}/.env`,
+          readonly: true,
+        });
+      }
+    }
   }
 
   return mounts;
@@ -240,6 +255,9 @@ function buildContainerArgs(
 
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
+
+  // Security hardening: drop all Linux capabilities
+  args.push(...containerSecurityArgs());
 
   // Run as host user so bind-mounted files are accessible.
   // Skip when running as root (uid 0), as the container's node user (uid 1000),
@@ -413,7 +431,8 @@ export async function runContainerAgent(
         { group: group.name, containerName },
         'Container timeout, stopping gracefully',
       );
-      exec(stopContainer(containerName), { timeout: 15000 }, (err) => {
+      const cmd = stopContainer(containerName);
+      execFile(cmd.bin, cmd.args, { timeout: 15000 }, (err) => {
         if (err) {
           logger.warn(
             { group: group.name, containerName, err },

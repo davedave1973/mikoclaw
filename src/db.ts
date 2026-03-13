@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import { z } from 'zod';
 
 import { ASSISTANT_NAME, DATA_DIR, STORE_DIR } from './config.js';
 import { isValidGroupFolder } from './group-folder.js';
@@ -13,6 +14,35 @@ import {
 } from './types.js';
 
 let db: Database.Database;
+
+// Schema for validating container_config JSON from the database (LOW-3)
+const AdditionalMountSchema = z.object({
+  hostPath: z.string(),
+  containerPath: z.string().optional(),
+  readonly: z.boolean().optional(),
+});
+
+const ContainerConfigSchema = z.object({
+  additionalMounts: z.array(AdditionalMountSchema).optional(),
+  timeout: z.number().optional(),
+});
+
+function parseContainerConfig(raw: string | null): import('./types.js').ContainerConfig | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    const result = ContainerConfigSchema.safeParse(parsed);
+    if (result.success) return result.data;
+    logger.warn(
+      { error: result.error.message },
+      'Invalid container_config in database, ignoring',
+    );
+    return undefined;
+  } catch {
+    logger.warn('Malformed container_config JSON in database, ignoring');
+    return undefined;
+  }
+}
 
 function createSchema(database: Database.Database): void {
   database.exec(`
@@ -570,9 +600,7 @@ export function getRegisteredGroup(
     folder: row.folder,
     trigger: row.trigger_pattern,
     added_at: row.added_at,
-    containerConfig: row.container_config
-      ? JSON.parse(row.container_config)
-      : undefined,
+    containerConfig: parseContainerConfig(row.container_config),
     requiresTrigger:
       row.requires_trigger === null ? undefined : row.requires_trigger === 1,
     isMain: row.is_main === 1 ? true : undefined,
@@ -623,9 +651,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
       folder: row.folder,
       trigger: row.trigger_pattern,
       added_at: row.added_at,
-      containerConfig: row.container_config
-        ? JSON.parse(row.container_config)
-        : undefined,
+      containerConfig: parseContainerConfig(row.container_config),
       requiresTrigger:
         row.requires_trigger === null ? undefined : row.requires_trigger === 1,
       isMain: row.is_main === 1 ? true : undefined,

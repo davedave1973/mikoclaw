@@ -44,6 +44,15 @@ const DEFAULT_BLOCKED_PATTERNS = [
   'id_ed25519',
   'private_key',
   '.secret',
+  '.password-store',
+  'password',
+  'token',
+  '.pem',
+  '.key',
+  '.p12',
+  '.pfx',
+  '.keystore',
+  '.jks',
 ];
 
 /**

@@ -72,6 +72,16 @@ export function startIpcWatcher(deps: IpcDeps): void {
           for (const file of messageFiles) {
             const filePath = path.join(messagesDir, file);
             try {
+              // Reject symlinks to prevent cross-group IPC escalation (MED-3)
+              const stat = fs.lstatSync(filePath);
+              if (!stat.isFile()) {
+                logger.warn(
+                  { file, sourceGroup },
+                  'Skipping non-regular IPC message file (possible symlink)',
+                );
+                try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+                continue;
+              }
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
               if (data.type === 'message' && data.chatJid && data.text) {
                 // Authorization: verify this group can send to this chatJid
@@ -123,6 +133,16 @@ export function startIpcWatcher(deps: IpcDeps): void {
           for (const file of taskFiles) {
             const filePath = path.join(tasksDir, file);
             try {
+              // Reject symlinks to prevent cross-group IPC escalation (MED-3)
+              const stat = fs.lstatSync(filePath);
+              if (!stat.isFile()) {
+                logger.warn(
+                  { file, sourceGroup },
+                  'Skipping non-regular IPC task file (possible symlink)',
+                );
+                try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+                continue;
+              }
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
               // Pass source group identity to processTaskIpc for authorization
               await processTaskIpc(data, sourceGroup, isMain, deps);

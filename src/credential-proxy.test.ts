@@ -189,4 +189,56 @@ describe('credential-proxy', () => {
     expect(res.statusCode).toBe(502);
     expect(res.body).toBe('Bad Gateway');
   });
+
+  it('blocks requests to disallowed paths with 403', async () => {
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'GET',
+        path: '/admin/settings',
+        headers: { 'content-type': 'application/json' },
+      },
+      '',
+    );
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toBe('Forbidden');
+  });
+
+  it('allows requests to /v1/ paths', async () => {
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: { 'content-type': 'application/json' },
+      },
+      '{}',
+    );
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('rejects oversized request body with 413', async () => {
+    proxyPort = await startProxy({ ANTHROPIC_API_KEY: 'sk-ant-real-key' });
+
+    // 11MB body (over the 10MB limit)
+    const largeBody = 'x'.repeat(11 * 1024 * 1024);
+    const res = await makeRequest(
+      proxyPort,
+      {
+        method: 'POST',
+        path: '/v1/messages',
+        headers: { 'content-type': 'application/json' },
+      },
+      largeBody,
+    );
+
+    expect(res.statusCode).toBe(413);
+    expect(res.body).toBe('Payload Too Large');
+  });
 });

@@ -17,6 +17,18 @@ import { request as httpRequest, RequestOptions } from 'http';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX = 120; // requests per window
+
+// Allowed URL path prefixes — requests to other paths are rejected with 403.
+// This prevents containers from accessing account management or other
+// Anthropic endpoints beyond what the agent SDK needs.
+const ALLOWED_PATH_PREFIXES = ['/v1/', '/api/oauth/'];
+
+// Simple per-IP sliding window rate limiter
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
 export type AuthMode = 'api-key' | 'oauth';
 
 export interface ProxyConfig {
@@ -46,9 +58,58 @@ export function startCredentialProxy(
 
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
+      // Path filtering: only allow SDK-relevant API paths
+      const reqPath = req.url || '/';
+      const pathAllowed = ALLOWED_PATH_PREFIXES.some((prefix) =>
+        reqPath.startsWith(prefix),
+      );
+      if (!pathAllowed) {
+        logger.warn(
+          { path: reqPath },
+          'Credential proxy: blocked request to disallowed path',
+        );
+        res.writeHead(403);
+        res.end('Forbidden');
+        return;
+      }
+
+      // Per-IP rate limiting
+      const clientIp = req.socket.remoteAddress || 'unknown';
+      const now = Date.now();
+      let bucket = rateLimitMap.get(clientIp);
+      if (!bucket || now >= bucket.resetAt) {
+        bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
+        rateLimitMap.set(clientIp, bucket);
+      }
+      bucket.count++;
+      if (bucket.count > RATE_LIMIT_MAX) {
+        logger.warn(
+          { clientIp, count: bucket.count },
+          'Credential proxy: rate limit exceeded',
+        );
+        res.writeHead(429);
+        res.end('Too Many Requests');
+        return;
+      }
+
       const chunks: Buffer[] = [];
-      req.on('data', (c) => chunks.push(c));
+      let bodySize = 0;
+      req.on('data', (c) => {
+        bodySize += c.length;
+        if (bodySize <= MAX_BODY_SIZE) {
+          chunks.push(c);
+        }
+      });
       req.on('end', () => {
+        if (bodySize > MAX_BODY_SIZE) {
+          logger.warn(
+            { bodySize },
+            'Credential proxy: request body too large',
+          );
+          res.writeHead(413);
+          res.end('Payload Too Large');
+          return;
+        }
         const body = Buffer.concat(chunks);
         const headers: Record<string, string | number | string[] | undefined> =
           {
