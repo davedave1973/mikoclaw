@@ -21,17 +21,24 @@ let lastLogContent = '';
 function tailLogs() {
   try {
     if (!fs.existsSync(LOG_DIR)) return;
-    const files = fs.readdirSync(LOG_DIR).filter(f => f.endsWith('.log')).sort();
+    const files = fs
+      .readdirSync(LOG_DIR)
+      .filter((f) => f.endsWith('.log'))
+      .sort();
     if (files.length === 0) return;
     const latest = path.join(LOG_DIR, files[files.length - 1]);
     const content = fs.readFileSync(latest, 'utf-8');
     if (content !== lastLogContent) {
       lastLogContent = content;
       for (const client of sseClients) {
-        client.write(`data: ${JSON.stringify({ type: 'log', content: content.slice(-2000) })}\n\n`);
+        client.write(
+          `data: ${JSON.stringify({ type: 'log', content: content.slice(-2000) })}\n\n`,
+        );
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 setInterval(tailLogs, 2000);
 
@@ -39,13 +46,19 @@ function getMessages(limit = 50): any[] {
   try {
     if (!fs.existsSync(DB_PATH)) return [];
     const db = new Database(DB_PATH, { readonly: true });
-    const rows = db.prepare(`
+    const rows = db
+      .prepare(
+        `
       SELECT id, chat_jid, sender_name, content, timestamp, is_from_me 
       FROM messages ORDER BY timestamp DESC LIMIT ?
-    `).all(limit);
+    `,
+      )
+      .all(limit);
     db.close();
     return (rows as any[]).reverse();
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function getGroups(): any[] {
@@ -55,14 +68,22 @@ function getGroups(): any[] {
     const rows = db.prepare(`SELECT * FROM registered_groups`).all();
     db.close();
     return rows as any[];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function getRecentLogs(): string[] {
   try {
     if (!fs.existsSync(LOG_DIR)) return [];
-    return fs.readdirSync(LOG_DIR).filter(f => f.endsWith('.log')).sort().slice(-10);
-  } catch { return []; }
+    return fs
+      .readdirSync(LOG_DIR)
+      .filter((f) => f.endsWith('.log'))
+      .sort()
+      .slice(-10);
+  } catch {
+    return [];
+  }
 }
 
 function getLogContent(filename: string): string {
@@ -71,7 +92,9 @@ function getLogContent(filename: string): string {
     const full = path.join(LOG_DIR, safe);
     if (!fs.existsSync(full)) return 'File not found';
     return fs.readFileSync(full, 'utf-8');
-  } catch { return 'Error reading log'; }
+  } catch {
+    return 'Error reading log';
+  }
 }
 
 const HTML = `<!DOCTYPE html>
@@ -217,7 +240,7 @@ const HTML = `<!DOCTYPE html>
 
 const server = createServer((req, res) => {
   const url = new URL(req.url || '/', `http://localhost:${PORT}`);
-  
+
   if (url.pathname === '/' || url.pathname === '/dashboard') {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(HTML);
@@ -238,10 +261,88 @@ const server = createServer((req, res) => {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
     });
     sseClients.add(res);
     req.on('close', () => sseClients.delete(res));
+  } else if (url.pathname === '/api/send' && req.method === 'POST') {
+    // 2-way comms: Antigravity -> WizDudeBot
+    const chunks: Buffer[] = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString());
+        const queueDir = path.join(PROJECT_DIR, 'data', 'antigrav-queue');
+        fs.mkdirSync(queueDir, { recursive: true });
+        const filename = `${Date.now()}.json`;
+        fs.writeFileSync(path.join(queueDir, filename), JSON.stringify({
+          from: 'antigravity',
+          message: body.message,
+          timestamp: new Date().toISOString(),
+          chatJid: body.chatJid || 'tg:8146835535',
+        }));
+        // Also write to the IPC input for the current container if running
+        const ipcDir = path.join(PROJECT_DIR, 'data', 'ipc', 'telegram_main', 'input');
+        if (fs.existsSync(ipcDir)) {
+          fs.writeFileSync(
+            path.join(ipcDir, `${Date.now()}.json`),
+            JSON.stringify({ type: 'message', text: body.message }),
+          );
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, queued: filename }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err) }));
+      }
+    });
+  } else if (url.pathname === '/api/inbox') {
+    // 2-way comms: WizDudeBot -> Antigravity (read recent bot responses)
+    try {
+      if (!fs.existsSync(DB_PATH)) { res.writeHead(200); res.end('[]'); return; }
+      const db = new Database(DB_PATH, { readonly: true });
+      const limit = parseInt(url.searchParams.get('limit') || '10');
+      const rows = db.prepare(`
+        SELECT content, timestamp, sender_name FROM messages
+        WHERE is_from_me = 1 ORDER BY timestamp DESC LIMIT ?
+      `).all(limit);
+      db.close();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify((rows as any[]).reverse()));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: String(err) }));
+    }
+  } else if (url.pathname === '/api/model') {
+    // Check or set model
+    if (req.method === 'GET') {
+      try {
+        const chatJid = url.searchParams.get('jid') || 'tg:8146835535';
+        if (!fs.existsSync(DB_PATH)) { res.writeHead(200); res.end('{}'); return; }
+        const db = new Database(DB_PATH, { readonly: true });
+        const row = db.prepare('SELECT value FROM router_state WHERE key = ?').get(`model:${chatJid}`) as any;
+        db.close();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ model: row?.value || 'deepseek/deepseek-chat-v3-0324' }));
+      } catch { res.writeHead(200); res.end('{}'); }
+    } else if (req.method === 'POST') {
+      const chunks: Buffer[] = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString());
+          const chatJid = body.chatJid || 'tg:8146835535';
+          const db = new Database(DB_PATH);
+          db.prepare('INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)').run(`model:${chatJid}`, body.model);
+          db.close();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, model: body.model }));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+    }
   } else {
     res.writeHead(404);
     res.end('Not Found');

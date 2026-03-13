@@ -46,6 +46,7 @@ import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
+import { readEnvFile } from './env.js';
 import {
   isSenderAllowed,
   isTriggerAllowed,
@@ -315,6 +316,9 @@ async function runAgent(
         chatJid,
         isMain,
         assistantName: ASSISTANT_NAME,
+        model: getGroupModel(chatJid),
+        history: getRecentHistory(chatJid, 20),
+        braveApiKey: readEnvFile(['BRAVE_API_KEY']).BRAVE_API_KEY,
       },
       (proc, containerName) =>
         queue.registerProcess(chatJid, proc, containerName, group.folder),
@@ -463,6 +467,23 @@ function recoverPendingMessages(): void {
 function ensureContainerSystemRunning(): void {
   ensureContainerRuntimeRunning();
   cleanupOrphans();
+}
+
+function getGroupModel(chatJid: string): string {
+  try {
+    const val = getRouterState(`model:${chatJid}`);
+    return val || 'deepseek/deepseek-chat-v3-0324';
+  } catch { return 'deepseek/deepseek-chat-v3-0324'; }
+}
+
+function getRecentHistory(chatJid: string, limit: number): Array<{ role: string; content: string }> {
+  try {
+    const messages = getMessagesSince(chatJid, new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), ASSISTANT_NAME, limit);
+    return messages.slice(-limit).map(m => ({
+      role: m.is_from_me ? 'assistant' : 'user',
+      content: m.content,
+    }));
+  } catch { return []; }
 }
 
 async function main(): Promise<void> {

@@ -44,6 +44,9 @@ export interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  model?: string;
+  history?: Array<{ role: string; content: string }>;
+  braveApiKey?: string;
 }
 
 export interface ContainerOutput {

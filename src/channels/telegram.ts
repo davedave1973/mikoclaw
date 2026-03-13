@@ -1,21 +1,61 @@
 /**
  * Telegram channel for MikoClaw.
- * Uses node-telegram-bot-api for long-polling based bot integration.
+ * Supports commands: /model, /help, /status
  */
 import TelegramBot from 'node-telegram-bot-api';
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
+import { STORE_DIR } from '../config.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import type { Channel, NewMessage } from '../types.js';
 
 const JID_PREFIX = 'tg:';
+const AVAILABLE_MODELS: Record<string, string> = {
+  deepseek: 'deepseek/deepseek-chat-v3-0324',
+  'gpt-4o': 'openai/gpt-4o',
+  'gpt-4o-mini': 'openai/gpt-4o-mini',
+  claude: 'anthropic/claude-3.5-sonnet',
+  haiku: 'anthropic/claude-3-haiku',
+  gemini: 'google/gemini-2.0-flash',
+  'gemini-pro': 'google/gemini-pro-1.5',
+  llama: 'meta-llama/llama-3.1-70b-instruct',
+  mixtral: 'mistralai/mixtral-8x7b-instruct',
+};
 
 function chatIdToJid(chatId: number | string): string {
   return `${JID_PREFIX}${chatId}`;
 }
-
 function jidToChatId(jid: string): number {
   return parseInt(jid.slice(JID_PREFIX.length), 10);
+}
+
+function getGroupModel(jid: string): string {
+  try {
+    const dbPath = path.join(STORE_DIR, 'messages.db');
+    if (!fs.existsSync(dbPath)) return 'deepseek/deepseek-chat-v3-0324';
+    const db = new Database(dbPath, { readonly: true });
+    const row = db.prepare('SELECT value FROM router_state WHERE key = ?').get(`model:${jid}`) as
+      | { value: string }
+      | undefined;
+    db.close();
+    return row?.value || 'deepseek/deepseek-chat-v3-0324';
+  } catch {
+    return 'deepseek/deepseek-chat-v3-0324';
+  }
+}
+
+function setGroupModel(jid: string, model: string): void {
+  try {
+    const dbPath = path.join(STORE_DIR, 'messages.db');
+    const db = new Database(dbPath);
+    db.prepare('INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)').run(`model:${jid}`, model);
+    db.close();
+  } catch (err) {
+    logger.error({ err }, 'Failed to set model');
+  }
 }
 
 function createTelegramChannel(opts: ChannelOpts): Channel | null {
@@ -24,36 +64,75 @@ function createTelegramChannel(opts: ChannelOpts): Channel | null {
   if (!token) return null;
 
   let bot: TelegramBot | null = null;
+  let botMe: TelegramBot.User | null = null;
   let connected = false;
+
+  async function handleCommand(msg: TelegramBot.Message, command: string, args: string): Promise<boolean> {
+    const chatId = msg.chat.id;
+    const jid = chatIdToJid(chatId);
+
+    if (command === '/model') {
+      if (!args) {
+        const current = getGroupModel(jid);
+        const modelList = Object.entries(AVAILABLE_MODELS)
+          .map(([name, id]) => `  \`${name}\` → ${id}${id === current ? ' ✅' : ''}`)
+          .join('\n');
+        await bot!.sendMessage(chatId, `**Current model:** \`${current}\`\n\n**Available:**\n${modelList}\n\nUsage: \`/model deepseek\` or \`/model openai/gpt-4o\``, { parse_mode: 'Markdown' });
+      } else {
+        const modelId = AVAILABLE_MODELS[args.toLowerCase()] || args;
+        setGroupModel(jid, modelId);
+        await bot!.sendMessage(chatId, `✅ Model switched to \`${modelId}\``, { parse_mode: 'Markdown' });
+        logger.info({ jid, model: modelId }, 'Model switched');
+      }
+      return true;
+    }
+
+    if (command === '/status') {
+      const current = getGroupModel(jid);
+      await bot!.sendMessage(chatId, `🟢 **WizDudeBot Status**\n• Model: \`${current}\`\n• Channel: Telegram\n• Dashboard: http://localhost:3333`, { parse_mode: 'Markdown' });
+      return true;
+    }
+
+    if (command === '/help') {
+      await bot!.sendMessage(chatId,
+        `🤖 **WizDudeBot Commands**\n\n` +
+        `/model [name] — Switch AI model\n` +
+        `/status — Show current config\n` +
+        `/help — This message\n\n` +
+        `Just type normally to chat!`,
+        { parse_mode: 'Markdown' },
+      );
+      return true;
+    }
+
+    return false;
+  }
 
   const channel: Channel = {
     name: 'telegram',
 
     async connect(): Promise<void> {
       bot = new TelegramBot(token, { polling: true });
-      const me = await bot.getMe();
-      logger.info({ botUsername: me.username }, 'Telegram bot connected');
+      botMe = await bot.getMe();
+      logger.info({ botUsername: botMe.username }, 'Telegram bot connected');
       connected = true;
 
-      bot.on('message', (msg) => {
+      bot.on('message', async (msg) => {
         if (!msg.text) return;
         const chatId = msg.chat.id;
         const jid = chatIdToJid(chatId);
-        const isGroup =
-          msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-        const senderName =
-          [msg.from?.first_name, msg.from?.last_name]
-            .filter(Boolean)
-            .join(' ') || 'Unknown';
+        const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+        const senderName = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') || 'Unknown';
         const chatName = msg.chat.title || senderName;
 
-        opts.onChatMetadata(
-          jid,
-          new Date(msg.date * 1000).toISOString(),
-          chatName,
-          'telegram',
-          isGroup,
-        );
+        opts.onChatMetadata(jid, new Date(msg.date * 1000).toISOString(), chatName, 'telegram', isGroup);
+
+        // Handle commands directly (don't pass to agent)
+        if (msg.text.startsWith('/')) {
+          const [cmd, ...rest] = msg.text.split(' ');
+          const handled = await handleCommand(msg, cmd.split('@')[0], rest.join(' '));
+          if (handled) return;
+        }
 
         const message: NewMessage = {
           id: `tg-${msg.message_id}-${chatId}`,
@@ -62,7 +141,7 @@ function createTelegramChannel(opts: ChannelOpts): Channel | null {
           sender_name: senderName,
           content: msg.text,
           timestamp: new Date(msg.date * 1000).toISOString(),
-          is_from_me: msg.from?.id === me.id,
+          is_from_me: msg.from?.id === botMe!.id,
           is_bot_message: msg.from?.is_bot || false,
         };
         opts.onMessage(jid, message);
@@ -86,28 +165,16 @@ function createTelegramChannel(opts: ChannelOpts): Channel | null {
       }
     },
 
-    isConnected(): boolean {
-      return connected;
-    },
-    ownsJid(jid: string): boolean {
-      return jid.startsWith(JID_PREFIX);
-    },
+    isConnected(): boolean { return connected; },
+    ownsJid(jid: string): boolean { return jid.startsWith(JID_PREFIX); },
 
     async disconnect(): Promise<void> {
-      if (bot) {
-        await bot.stopPolling();
-        connected = false;
-        logger.info('Telegram bot disconnected');
-      }
+      if (bot) { await bot.stopPolling(); connected = false; logger.info('Telegram bot disconnected'); }
     },
 
     async setTyping(jid: string, isTyping: boolean): Promise<void> {
       if (!bot || !isTyping) return;
-      try {
-        await bot.sendChatAction(jidToChatId(jid), 'typing');
-      } catch {
-        /* best-effort */
-      }
+      try { await bot.sendChatAction(jidToChatId(jid), 'typing'); } catch { /* best-effort */ }
     },
   };
   return channel;
