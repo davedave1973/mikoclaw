@@ -354,6 +354,12 @@ async function startMessageLoop(): Promise<void> {
 
   logger.info(`NanoClaw running (trigger: @${ASSISTANT_NAME})`);
 
+  // Comms watcher: pick up messages from Antigravity (data/comms/to-mikoclaw/)
+  const commsInDir = path.join(process.cwd(), 'data', 'comms', 'to-mikoclaw');
+  const commsOutDir = path.join(process.cwd(), 'data', 'comms', 'from-mikoclaw');
+  fs.mkdirSync(commsInDir, { recursive: true });
+  fs.mkdirSync(commsOutDir, { recursive: true });
+
   while (true) {
     try {
       const jids = Object.keys(registeredGroups);
@@ -442,6 +448,38 @@ async function startMessageLoop(): Promise<void> {
     } catch (err) {
       logger.error({ err }, 'Error in message loop');
     }
+
+    // Process comms from Antigravity (file-based)
+    try {
+      const commsFiles = fs.existsSync(commsInDir)
+        ? fs.readdirSync(commsInDir).filter(f => f.endsWith('.json')).sort()
+        : [];
+      for (const file of commsFiles) {
+        const filePath = path.join(commsInDir, file);
+        try {
+          const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+          fs.unlinkSync(filePath);
+          // Find the first registered chat to inject into
+          const targetJid = data.chatJid || Object.keys(registeredGroups)[0];
+          if (!targetJid) continue;
+          // Store as a user message so it gets picked up by the message loop
+          const msgId = `antigrav-${Date.now()}`;
+          storeMessage({
+            id: msgId,
+            chat_jid: targetJid,
+            sender: 'antigravity',
+            sender_name: 'Antigravity',
+            content: data.message,
+            timestamp: new Date().toISOString(),
+            is_from_me: false,
+            is_bot_message: false,
+          });
+          storeChatMetadata(targetJid, new Date().toISOString(), 'Antigravity', 'cli', false);
+          logger.info({ message: data.message }, 'Antigravity message injected');
+        } catch { /* skip bad files */ }
+      }
+    } catch { /* ignore comms errors */ }
+
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
   }
 }

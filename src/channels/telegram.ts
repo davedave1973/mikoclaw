@@ -111,12 +111,43 @@ function createTelegramChannel(opts: ChannelOpts): Channel | null {
       return true;
     }
 
+    if (command === '/antigrav') {
+      if (!args) {
+        await bot!.sendMessage(chatId, '📡 Usage: `/antigrav your message here`\n\nSends a message to Antigravity (the coding assistant).', { parse_mode: 'Markdown' });
+      } else {
+        const commsDir = path.join(process.cwd(), 'data', 'comms', 'to-antigrav');
+        fs.mkdirSync(commsDir, { recursive: true });
+        const filename = `${Date.now()}.json`;
+        fs.writeFileSync(path.join(commsDir, filename), JSON.stringify({
+          from: msg.from?.first_name || 'User',
+          message: args,
+          timestamp: new Date().toISOString(),
+          chatJid: jid,
+        }));
+        await bot!.sendMessage(chatId, '📡 Message sent to Antigravity ✅');
+        logger.info({ message: args }, 'Message queued for Antigravity');
+      }
+      return true;
+    }
+
+    if (command === '/mikoclaw') {
+      if (!args) {
+        await bot!.sendMessage(chatId, '🤖 Usage: `/mikoclaw your message here`\n\nSends a direct message to the AI agent.', { parse_mode: 'Markdown' });
+      } else {
+        // Don't intercept — let it fall through as a normal message to the agent
+        return false;
+      }
+      return true;
+    }
+
     if (command === '/help') {
       await bot!.sendMessage(
         chatId,
         `🤖 **WizDudeBot Commands**\n\n` +
           `/model [name] — Switch AI model\n` +
           `/status — Show current config\n` +
+          `/antigrav [msg] — Send message to Antigravity\n` +
+          `/mikoclaw [msg] — Send direct message to AI agent\n` +
           `/help — This message\n\n` +
           `Just type normally to chat!`,
         { parse_mode: 'Markdown' },
