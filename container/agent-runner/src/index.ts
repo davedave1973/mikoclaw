@@ -137,6 +137,20 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'send_to_antigravity',
+      description: 'Send a message to Antigravity (the AI coding assistant). Use this when you need Antigravity to do something: coding tasks, research, file operations, or to relay information. Antigravity will receive the message and can reply back.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'The message to send to Antigravity' },
+        },
+        required: ['message'],
+      },
+    },
+  },
 ];
 
 async function runQuery(
@@ -185,6 +199,18 @@ async function runQuery(
       if (tc.function.name === 'web_search' && braveApiKey) {
         const args = JSON.parse(tc.function.arguments);
         result = await braveSearch(args.query, braveApiKey);
+      } else if (tc.function.name === 'send_to_antigravity') {
+        const args = JSON.parse(tc.function.arguments);
+        const outboxDir = '/workspace/group/outbox';
+        fs.mkdirSync(outboxDir, { recursive: true });
+        const filename = `${Date.now()}.json`;
+        fs.writeFileSync(`${outboxDir}/${filename}`, JSON.stringify({
+          from: 'MikoClaw',
+          message: args.message,
+          timestamp: new Date().toISOString(),
+        }));
+        log(`Sent to Antigravity: ${args.message}`);
+        result = 'Message sent to Antigravity successfully. They will receive it shortly.';
       }
       history.push({ role: 'tool', tool_call_id: tc.id, content: result } as any);
     }

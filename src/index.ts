@@ -497,9 +497,25 @@ async function startMessageLoop(): Promise<void> {
           /* skip bad files */
         }
       }
-    } catch {
-      /* ignore comms errors */
-    }
+    } catch { /* ignore comms errors */ }
+
+    // Pick up messages MikoClaw sent to Antigravity (from container outbox)
+    try {
+      const outboxDir = path.join(process.cwd(), 'groups', 'telegram_main', 'outbox');
+      if (fs.existsSync(outboxDir)) {
+        const outboxFiles = fs.readdirSync(outboxDir).filter(f => f.endsWith('.json'));
+        for (const file of outboxFiles) {
+          try {
+            const src = path.join(outboxDir, file);
+            const dest = path.join(process.cwd(), 'data', 'comms', 'to-antigrav', file);
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            fs.copyFileSync(src, dest);
+            fs.unlinkSync(src);
+            logger.info({ file }, 'MikoClaw → Antigravity message relayed');
+          } catch { /* skip */ }
+        }
+      }
+    } catch { /* ignore */ }
 
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
   }
