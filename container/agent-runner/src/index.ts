@@ -92,7 +92,8 @@ function buildSystemPrompt(input: ContainerInput): string {
   const name = input.assistantName || 'WizDudeBot';
   const parts = [
     `You are ${name}, a helpful AI assistant on Telegram.`,
-    `You can search the web using the web_search tool when users ask about current events, news, or anything that needs live data.`,
+    `IMPORTANT: Always respond in English unless the user explicitly writes in another language.`,
+    `You have a web_search tool available. ALWAYS use it when users ask about news, current events, scores, prices, or anything that requires up-to-date information. Do NOT say you can't access the web — use the web_search tool instead.`,
     `Respond conversationally. Be concise but helpful. Use emoji naturally.`,
   ];
   for (const p of ['/workspace/global/CLAUDE.md', '/workspace/group/CLAUDE.md']) {

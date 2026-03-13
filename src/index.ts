@@ -473,17 +473,29 @@ function getGroupModel(chatJid: string): string {
   try {
     const val = getRouterState(`model:${chatJid}`);
     return val || 'deepseek/deepseek-chat-v3-0324';
-  } catch { return 'deepseek/deepseek-chat-v3-0324'; }
+  } catch {
+    return 'deepseek/deepseek-chat-v3-0324';
+  }
 }
 
-function getRecentHistory(chatJid: string, limit: number): Array<{ role: string; content: string }> {
+function getRecentHistory(
+  chatJid: string,
+  limit: number,
+): Array<{ role: string; content: string }> {
   try {
-    const messages = getMessagesSince(chatJid, new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), ASSISTANT_NAME, limit);
-    return messages.slice(-limit).map(m => ({
+    const messages = getMessagesSince(
+      chatJid,
+      new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      ASSISTANT_NAME,
+      limit,
+    );
+    return messages.slice(-limit).map((m) => ({
       role: m.is_from_me ? 'assistant' : 'user',
       content: m.content,
     }));
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 async function main(): Promise<void> {

@@ -275,14 +275,23 @@ const server = createServer((req, res) => {
         const queueDir = path.join(PROJECT_DIR, 'data', 'antigrav-queue');
         fs.mkdirSync(queueDir, { recursive: true });
         const filename = `${Date.now()}.json`;
-        fs.writeFileSync(path.join(queueDir, filename), JSON.stringify({
-          from: 'antigravity',
-          message: body.message,
-          timestamp: new Date().toISOString(),
-          chatJid: body.chatJid || 'tg:8146835535',
-        }));
+        fs.writeFileSync(
+          path.join(queueDir, filename),
+          JSON.stringify({
+            from: 'antigravity',
+            message: body.message,
+            timestamp: new Date().toISOString(),
+            chatJid: body.chatJid || 'tg:8146835535',
+          }),
+        );
         // Also write to the IPC input for the current container if running
-        const ipcDir = path.join(PROJECT_DIR, 'data', 'ipc', 'telegram_main', 'input');
+        const ipcDir = path.join(
+          PROJECT_DIR,
+          'data',
+          'ipc',
+          'telegram_main',
+          'input',
+        );
         if (fs.existsSync(ipcDir)) {
           fs.writeFileSync(
             path.join(ipcDir, `${Date.now()}.json`),
@@ -299,13 +308,21 @@ const server = createServer((req, res) => {
   } else if (url.pathname === '/api/inbox') {
     // 2-way comms: WizDudeBot -> Antigravity (read recent bot responses)
     try {
-      if (!fs.existsSync(DB_PATH)) { res.writeHead(200); res.end('[]'); return; }
+      if (!fs.existsSync(DB_PATH)) {
+        res.writeHead(200);
+        res.end('[]');
+        return;
+      }
       const db = new Database(DB_PATH, { readonly: true });
       const limit = parseInt(url.searchParams.get('limit') || '10');
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(
+          `
         SELECT content, timestamp, sender_name FROM messages
         WHERE is_from_me = 1 ORDER BY timestamp DESC LIMIT ?
-      `).all(limit);
+      `,
+        )
+        .all(limit);
       db.close();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify((rows as any[]).reverse()));
@@ -318,13 +335,26 @@ const server = createServer((req, res) => {
     if (req.method === 'GET') {
       try {
         const chatJid = url.searchParams.get('jid') || 'tg:8146835535';
-        if (!fs.existsSync(DB_PATH)) { res.writeHead(200); res.end('{}'); return; }
+        if (!fs.existsSync(DB_PATH)) {
+          res.writeHead(200);
+          res.end('{}');
+          return;
+        }
         const db = new Database(DB_PATH, { readonly: true });
-        const row = db.prepare('SELECT value FROM router_state WHERE key = ?').get(`model:${chatJid}`) as any;
+        const row = db
+          .prepare('SELECT value FROM router_state WHERE key = ?')
+          .get(`model:${chatJid}`) as any;
         db.close();
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ model: row?.value || 'deepseek/deepseek-chat-v3-0324' }));
-      } catch { res.writeHead(200); res.end('{}'); }
+        res.end(
+          JSON.stringify({
+            model: row?.value || 'deepseek/deepseek-chat-v3-0324',
+          }),
+        );
+      } catch {
+        res.writeHead(200);
+        res.end('{}');
+      }
     } else if (req.method === 'POST') {
       const chunks: Buffer[] = [];
       req.on('data', (c) => chunks.push(c));
@@ -333,7 +363,9 @@ const server = createServer((req, res) => {
           const body = JSON.parse(Buffer.concat(chunks).toString());
           const chatJid = body.chatJid || 'tg:8146835535';
           const db = new Database(DB_PATH);
-          db.prepare('INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)').run(`model:${chatJid}`, body.model);
+          db.prepare(
+            'INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)',
+          ).run(`model:${chatJid}`, body.model);
           db.close();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, model: body.model }));
