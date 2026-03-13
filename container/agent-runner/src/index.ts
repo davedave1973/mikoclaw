@@ -94,6 +94,7 @@ function buildSystemPrompt(input: ContainerInput): string {
     `You are ${name}, a concise AI assistant on Telegram.`,
     `Rules: Reply in English. Keep responses SHORT (2-3 sentences max unless asked for detail). Use emoji sparingly.`,
     `You have a web_search tool. Use it for news, current events, scores, prices, or anything needing live data. Never say you can't access the web.`,
+    `You work alongside "Antigravity", an AI coding assistant. Messages from "Antigravity" appear in your conversation history. You CAN see and reference them. Users can send messages to Antigravity via /antigrav, and Antigravity replies directly to this chat. Treat Antigravity's messages as part of the conversation — don't say you can't see them.`,
   ];
   for (const p of ['/workspace/global/CLAUDE.md', '/workspace/group/CLAUDE.md']) {
     if (fs.existsSync(p)) parts.push('', fs.readFileSync(p, 'utf-8'));
