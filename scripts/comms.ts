@@ -77,7 +77,7 @@ if (action === 'reply') {
   const msgId = `antigrav-reply-${Date.now()}`;
   db.prepare(
     'INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(msgId, chatJid, 'antigravity', 'Antigravity', message, new Date().toISOString(), 1, 1);
+  ).run(msgId, chatJid, 'antigravity', 'Antigravity', message, new Date().toISOString(), 1, 0);
   db.close();
   
   console.log(`✅ Sent directly to Telegram + stored in DB`);
